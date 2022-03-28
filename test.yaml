@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy-test
+  namespace: default
+  labels:
+    app: proxy-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy-test
+  template:
+    metadata:
+      labels:
+        app: proxy-test
+        environment: test
+    spec:
+      containers:
+      - name: client
+        image: elcolio/net-snmp:latest
+        imagePullPolicy: Always
+      - name: proxy-sidecar
+        image: host.minikube.internal/proxy-sidecar:1
+        imagePullPolicy: Always
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        env:
+          - name: SERVER_ADDRESS
+            value: "192.168.0.110:10161"
