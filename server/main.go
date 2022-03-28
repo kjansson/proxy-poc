@@ -36,12 +36,12 @@ func main() {
 	fd := int(rFieldByNames(pc, "fd", "pfd", "Sysfd").Int())
 	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil {
 		syscall.Close(fd)
-		fmt.Printf("syscall.SetsockoptInt err: %s", err)
-		return
+		log.Println("Could not set socket option IP_TRANSPARENT")
+		syscall.Exit(1)
 	}
 
 	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil {
-		fmt.Println("NO")
+		log.Println("Could not set socket option IP_RECVORIGDSTADDR")
 		syscall.Exit(1)
 	}
 
@@ -50,7 +50,7 @@ func main() {
 		oob := make([]byte, 128)
 		n, n2, flags, addr, err := pc.ReadMsgUDP(buf, oob)
 		if err != nil {
-			fmt.Println("Fel")
+			fmt.Println("Error while reading UDP message")
 			continue
 		}
 		go serve(pc, addr, buf[:n], n, oob[:n2], n2, flags)
@@ -58,80 +58,64 @@ func main() {
 
 }
 
-type ProxyStuff struct {
+type Wrapper struct {
 	Payload []byte
 	Ip      string
 	Port    int
 	Length  int
 }
 
-func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, n2 int, flags int) {
+func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn int, flags int) {
 
-	msgs, err := syscall.ParseSocketControlMessage(oob[:n2])
+	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
-		fmt.Println("NO2")
+		fmt.Println("Could not parse message")
 		syscall.Exit(1)
 	}
 	for _, msg := range msgs {
 
 		originalDstRaw := &syscall.RawSockaddrInet4{}
 		if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
-			fmt.Println("NO3")
+			log.Println("Could not read message data")
 			syscall.Exit(1)
 		}
-		//	fmt.Println(originalDstRaw.Addr, ":", originalDstRaw.Port)
 
-		pkt := ProxyStuff{}
+		pkt := Wrapper{}
 		err := json.Unmarshal(buf, &pkt)
 		if err != nil {
-			fmt.Println("Json marshal failed")
+			log.Println("Json marshal failed")
 		}
 
 		udpAddr, err := net.ResolveUDPAddr("udp", pkt.Ip+":"+strconv.Itoa(pkt.Port))
-
 		if err != nil {
-			fmt.Println("Nooope", err)
+			log.Println("Error resolving address", err)
 		}
-		//	fmt.Println("Dialing")
+
 		conn, err := net.DialUDP("udp", nil, udpAddr)
 		if err != nil {
+			log.Println("Error dialing UDP", err)
 			return
 		}
 		defer conn.Close()
-		//	payload := fmt.Sprintf("%s", pkt.Payload[:pkt.Length])
-		//	fmt.Println("Writing ", pkt.Length, " - ", len(payload))
 
 		conn.Write(pkt.Payload[:pkt.Length])
-		//	fmt.Println("Wrore ", n)
 
 		var data []byte
 		data = make([]byte, 1024)
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second)) // Add deadline to ensure it doesn't block forever
-		//	fmt.Println("reading")
+		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 		bytesRead, err := conn.Read(data)
-		//	fmt.Println("read ", bytesRead)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				return
 			}
-
 			log.Printf("Encountered error while reading from remote [%s]: %s", conn.RemoteAddr(), err)
 			return
 		}
-		//	fmt.Println("Sending back")
-
-		if err != nil {
-			fmt.Println("Nooope", err)
-		}
-		//	fmt.Println("Dialing")
 
 		laddr := addr.String()
-		//fmt.Println(laddr)
-
 		ludpAddr, err := net.ResolveUDPAddr("udp", laddr)
 
 		bytesWritten, err := pc.WriteToUDP(data, ludpAddr)
-		//	fmt.Println("Sent ", string(data))
 		if err != nil {
 			log.Printf("Encountered error while writing to local [%s]: %s", pc.LocalAddr(), err)
 			return
@@ -139,10 +123,8 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, n2 int
 			log.Printf("Not all bytes [%d < %d] in buffer written to locoal [%s]", bytesWritten, len(data), pc.LocalAddr())
 			return
 		}
-		fmt.Printf(".")
-
+		fmt.Printf(".") // Just to see that something happens
 	}
-
 }
 
 func udpAddrToSocketAddr(addr *net.UDPAddr) (syscall.Sockaddr, error) {
