@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"syscall"
@@ -24,8 +25,21 @@ func rFieldByNames(i interface{}, fields ...string) (field reflect.Value) {
 func main() {
 	// listen to incoming udp packets
 
-	service := "192.168.0.110:10161"
-	udpAddr, err := net.ResolveUDPAddr("udp", service)
+	server_address, sa_ok := os.LookupEnv("SERVER_ADDRESS")
+
+	if !sa_ok {
+		log.Println("No server address given.")
+		os.Exit(1)
+	}
+
+	server_port, sp_ok := os.LookupEnv("SERVER_PORT")
+	if !sp_ok {
+		log.Println("Defaulting to port 10161.")
+		server_port = "10161"
+	}
+
+	log.Printf("Binding to %s:%s\n", server_address, server_port)
+	udpAddr, err := net.ResolveUDPAddr("udp", server_address+":"+server_port)
 
 	pc, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
