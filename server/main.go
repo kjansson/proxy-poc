@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -131,26 +130,5 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn i
 			return
 		}
 		fmt.Printf(".") // Just to see that something has passed through
-	}
-}
-
-func udpAddrToSocketAddr(addr *net.UDPAddr) (syscall.Sockaddr, error) {
-	switch {
-	case addr.IP.To4() != nil:
-		ip := [4]byte{}
-		copy(ip[:], addr.IP.To4())
-
-		return &syscall.SockaddrInet4{Addr: ip, Port: addr.Port}, nil
-
-	default:
-		ip := [16]byte{}
-		copy(ip[:], addr.IP.To16())
-
-		zoneID, err := strconv.ParseUint(addr.Zone, 10, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		return &syscall.SockaddrInet6{Addr: ip, Port: addr.Port, ZoneId: uint32(zoneID)}, nil
 	}
 }
