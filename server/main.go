@@ -48,13 +48,13 @@ func main() {
 	defer pc.Close()
 
 	fd := int(rFieldByNames(pc, "fd", "pfd", "Sysfd").Int())
-	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil {
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil { // Allow binding to non-local
 		syscall.Close(fd)
 		log.Println("Could not set socket option IP_TRANSPARENT")
 		syscall.Exit(1)
 	}
 
-	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil {
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil { // Enable getting original destination address
 		log.Println("Could not set socket option IP_RECVORIGDSTADDR")
 		syscall.Exit(1)
 	}
@@ -62,58 +62,59 @@ func main() {
 	for {
 		buf := make([]byte, 4096)
 		oob := make([]byte, 128)
-		n, n2, flags, addr, err := pc.ReadMsgUDP(buf, oob)
+		n, n2, flags, addr, err := pc.ReadMsgUDP(buf, oob) // Get a message and out-of-bound data
 		if err != nil {
 			fmt.Println("Error while reading UDP message")
 			continue
 		}
-		go serve(pc, addr, buf[:n], n, oob[:n2], n2, flags)
+		go serve(pc, addr, buf[:n], n, oob[:n2], n2, flags) // Serve connection
 	}
 
 }
 
 type Wrapper struct {
 	Payload []byte
-	Ip      string
+	Ip      string // Original destination
 	Port    int
 	Length  int
 }
 
 func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn int, flags int) {
 
-	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
+	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn]) // Get data from OOB
 	if err != nil {
 		fmt.Println("Could not parse message")
 		syscall.Exit(1)
 	}
 	for _, msg := range msgs {
 
-		originalDstRaw := &syscall.RawSockaddrInet4{}
+		originalDstRaw := &syscall.RawSockaddrInet4{} // Get original destination
 		if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
 			log.Println("Could not read message data")
 			syscall.Exit(1)
 		}
 
-		pkt := Wrapper{}
-		err := json.Unmarshal(buf, &pkt)
+		pkt := Wrapper{}                 // Create a new wrapper for the proxy
+		err := json.Unmarshal(buf, &pkt) // Unmarshal the wrapped message received
 		if err != nil {
 			log.Println("Json marshal failed")
 		}
 
-		udpAddr, err := net.ResolveUDPAddr("udp", pkt.Ip+":"+strconv.Itoa(pkt.Port))
+		udpAddr, err := net.ResolveUDPAddr("udp", pkt.Ip+":"+strconv.Itoa(pkt.Port)) // Address is now original destination
 		if err != nil {
 			log.Println("Error resolving address", err)
 		}
 
-		conn, err := net.DialUDP("udp", nil, udpAddr)
+		conn, err := net.DialUDP("udp", nil, udpAddr) // Dial
 		if err != nil {
 			log.Println("Error dialing UDP", err)
 			return
 		}
 		defer conn.Close()
 
-		conn.Write(pkt.Payload[:pkt.Length])
+		conn.Write(pkt.Payload[:pkt.Length]) // And send the payload
 
+		// Wait for response
 		var data []byte
 		data = make([]byte, 1024)
 		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
@@ -126,18 +127,17 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn i
 			return
 		}
 
+		// Create a connection to the local socket
 		laddr := addr.String()
 		ludpAddr, err := net.ResolveUDPAddr("udp", laddr)
 
-		bytesWritten, err := pc.WriteToUDP(data, ludpAddr)
+		// Write the response back
+		_, err = pc.WriteToUDP(data, ludpAddr)
 		if err != nil {
 			log.Printf("Encountered error while writing to local [%s]: %s", pc.LocalAddr(), err)
 			return
-		} else if bytesWritten < bytesRead {
-			log.Printf("Not all bytes [%d < %d] in buffer written to locoal [%s]", bytesWritten, len(data), pc.LocalAddr())
-			return
 		}
-		fmt.Printf(".") // Just to see that something happens
+		fmt.Printf(".") // Just to see that something has passed through
 	}
 }
 
