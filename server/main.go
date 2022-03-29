@@ -3,16 +3,18 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
+
+const addrMaxBytes = 21
 
 func rFieldByNames(i interface{}, fields ...string) (field reflect.Value) {
 	v := reflect.Indirect(reflect.ValueOf(i))
@@ -72,13 +74,6 @@ func main() {
 
 }
 
-type Wrapper struct {
-	Payload []byte
-	Ip      string // Original destination
-	Port    int
-	Length  int
-}
-
 func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn int, flags int) {
 
 	msgs, err := syscall.ParseSocketControlMessage(oob[:oobn]) // Get data from OOB
@@ -94,13 +89,12 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn i
 			syscall.Exit(1)
 		}
 
-		pkt := Wrapper{}                 // Create a new wrapper for the proxy
-		err := json.Unmarshal(buf, &pkt) // Unmarshal the wrapped message received
-		if err != nil {
-			log.Println("Json marshal failed")
-		}
+		// Strip the last 21 bytes off the payload, this is the ip+port (padded to 21 bytes) added by the client
+		orgAddr := strings.TrimSpace(string(buf[len(buf)-addrMaxBytes:]))
+		// Split by ":" to get ip and port
+		orgAddrParts := strings.Split(orgAddr, ":")
 
-		udpAddr, err := net.ResolveUDPAddr("udp", pkt.Ip+":"+strconv.Itoa(pkt.Port)) // Address is now original destination
+		udpAddr, err := net.ResolveUDPAddr("udp", orgAddrParts[0]+":"+string(orgAddrParts[1])) // Address is now original destination
 		if err != nil {
 			log.Println("Error resolving address", err)
 		}
@@ -112,13 +106,12 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn i
 		}
 		defer conn.Close()
 
-		conn.Write(pkt.Payload[:pkt.Length]) // And send the payload
+		conn.Write(buf[:len(buf)-21]) // And send the payload, minus the ip+port
 
 		// Wait for response
-		var data []byte
-		data = make([]byte, 1024)
+		data := make([]byte, 1024)
 		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-		bytesRead, err := conn.Read(data)
+		_, err = conn.Read(data)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				return

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -81,18 +80,11 @@ func listenUDP(server string) {
 func handleUDPConn(data []byte, srcAddr, dstAddr *net.UDPAddr, localConn *net.UDPConn, server string) {
 	log.Printf("Connection %s to %s", srcAddr, dstAddr)
 
-	// Create a wrapper for the packet
-	pl := Wrapper{
-		Payload: data,                // Original payload
-		Ip:      dstAddr.IP.String(), // Original destination ip
-		Port:    dstAddr.Port,        // Original destination port
-		Length:  len(data),           // Length of payload
-	}
+	// Append "ip:port" to the payload, and pad to 21 bytes (max number of bytes needed for xxx.xxx.xxx.xxx:yyyyy)
+	// This will be stripped off in the server and used as destination address
+	addr := fmt.Sprintf("%-21v", dstAddr.String())
+	data = append(data[:], addr[:]...)
 
-	jpl, err := json.Marshal(pl) // Marshal as JSON
-	if err != nil {
-		fmt.Println("JSON marshal failed", err)
-	}
 	proxyServerConn, err := net.Dial("udp", server) // Dial the server part of the proxy
 	if err != nil {
 		log.Printf("Failed to connect to original UDP relay server: %s", err)
@@ -100,7 +92,7 @@ func handleUDPConn(data []byte, srcAddr, dstAddr *net.UDPAddr, localConn *net.UD
 	}
 	defer proxyServerConn.Close()
 
-	_, err = proxyServerConn.Write(jpl) // Send the wrapped package to the server
+	_, err = proxyServerConn.Write(data) // Send the wrapped package to the server
 	if err != nil {
 		log.Printf("Encountered error while writing to remote [%s]: %s", proxyServerConn.RemoteAddr(), err)
 		return
