@@ -41,6 +41,9 @@ func main() {
 
 	log.Printf("Binding to %s:%s\n", server_address, server_port)
 	udpAddr, err := net.ResolveUDPAddr("udp", server_address+":"+server_port)
+	if err != nil {
+		log.Println("Error resolving address", err)
+	}
 
 	pc, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
@@ -122,6 +125,9 @@ func serve(pc *net.UDPConn, addr net.Addr, buf []byte, n int, oob []byte, oobn i
 		// Create a connection to the local socket
 		laddr := addr.String()
 		ludpAddr, err := net.ResolveUDPAddr("udp", laddr)
+		if err != nil {
+			log.Println("Error resolving address", err)
+		}
 
 		// Write the response back
 		_, err = pc.WriteToUDP(data, ludpAddr)
