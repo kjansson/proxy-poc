@@ -40,26 +40,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	server_address, sa_ok := os.LookupEnv("SERVER_ADDRESS")
-	if !sa_ok && mode == "sidecar" {
+	serverAddress, saOk := os.LookupEnv("SERVER_ADDRESS")
+	if !saOk && mode == "sidecar" {
 		log.Println("No server address given.")
 		os.Exit(1)
 	}
 
-	server_port, sp_ok := os.LookupEnv("SERVER_PORT")
-	if !sp_ok {
-		if mode == "server" {
-			log.Println("Defaulting to port 11161.")
-			server_port = "11161"
-		} else {
-			log.Println("Defaulting to port 161.")
-			server_port = "161"
-		}
+	interceptPort, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT")
+	if !interceptOk && mode == "sidecar" {
+		log.Println("No intercept port given.")
+		os.Exit(1)
 	}
-	if mode == "server" {
 
-		log.Printf("Binding to %s:%s as server\n", server_address, server_port)
-		udpAddr, err := net.ResolveUDPAddr("udp", server_address+":"+server_port)
+	serverPort, sp_ok := os.LookupEnv("SERVER_PORT")
+	if mode == "server" {
+		if !sp_ok {
+			log.Println("Defaulting to port 11111.")
+			serverPort = "11111"
+		}
+
+		log.Printf("Binding to %s:%s as server\n", serverAddress, serverPort)
+		udpAddr, err := net.ResolveUDPAddr("udp", serverAddress+":"+serverPort)
 		if err != nil {
 			log.Println("Error resolving address", err)
 		}
@@ -71,9 +72,9 @@ func main() {
 		defer udpListener.Close()
 
 	} else {
-		log.Printf("Binding to 0.0.0.0:161 as client\n")
+		log.Printf("Binding to 0.0.0.0:%s as client\n", interceptPort)
 
-		port, err := strconv.Atoi(server_port)
+		port, err := strconv.Atoi(interceptPort)
 		if err != nil {
 			log.Println("Could not parse port")
 			os.Exit(1)
@@ -100,7 +101,7 @@ func main() {
 		syscall.Exit(1)
 	}
 
-	go serveUDP(server_address, server_port, mode)
+	go serveUDP(serverAddress, serverPort, mode)
 
 	interruptListener := make(chan os.Signal)
 	signal.Notify(interruptListener, os.Interrupt)
