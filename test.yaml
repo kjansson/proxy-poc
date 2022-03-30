@@ -35,7 +35,7 @@ spec:
             add: ["NET_ADMIN"]
         env:
           - name: SERVER_ADDRESS
-            value: "10.218.79.27:10161"
+            value: ":10161"
         resources:
           requests:
             cpu: 100m
