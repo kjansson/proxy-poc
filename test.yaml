@@ -38,7 +38,7 @@ spec:
             value: "192.168.0.112:11111"
           - name: PROXY_MODE
             value: sidecar
-          - name: INTERCEPT PORT
+          - name: PROXY_INTERCEPT_PORT_RANGE
             value: 161
         resources:
           requests:

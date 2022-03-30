@@ -1,6 +1,11 @@
 #!/bin/bash
 
-iptables -t mangle -A OUTPUT -p udp --dport $PORT_RANGE -j MARK --set-mark 1
+if [[ -z "$PROXY_INTERCEPT_PORT_RANGE" ]]; then
+    echo "No intercept port range given."
+    exit
+fi
+
+iptables -t mangle -A OUTPUT -p udp --dport $PROXY_INTERCEPT_PORT_RANGE -j MARK --set-mark 1
 
 ip route flush table 100
 ip rule add fwmark 1 lookup 100

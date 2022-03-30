@@ -30,6 +30,45 @@ func rFieldByNames(i interface{}, fields ...string) (field reflect.Value) {
 	}
 	return
 }
+
+func parsePortRange(raw string) ([]int, error) {
+
+	ports := []int{}
+
+	portsAndRanges := strings.Split(raw, ",")
+
+	for _, par := range portsAndRanges {
+		if strings.Contains(par, ":") {
+			parts := strings.Split(par, ":")
+			if len(parts) > 1 {
+				return []int{}, fmt.Errorf("Error while parsing possible range, too many colons.")
+			}
+			first, err := strconv.Atoi(string(par[0]))
+			if err != nil {
+				return []int{}, fmt.Errorf("Error while parsing range, possibly not valid int.")
+			}
+			last, err := strconv.Atoi(string(par[0]))
+			if err != nil {
+				return []int{}, fmt.Errorf("Error while parsing range, possibly not valid int.")
+			}
+			if first > last {
+				return []int{}, fmt.Errorf("Error while parsing range, first in range bigger than last.")
+			}
+			for i := first; i < last; i++ {
+				ports = append(ports, i)
+			}
+		} else {
+			p, err := strconv.Atoi(string(par))
+			if err != nil {
+				return []int{}, fmt.Errorf("Error while parsing port number, possibly not valid int.")
+			}
+			ports = append(ports, p)
+		}
+	}
+
+	return ports, nil
+}
+
 func main() {
 	// listen to incoming udp packets
 	var err error
@@ -46,7 +85,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	interceptPort, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT")
+	interceptPort, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT_RANGE")
 	if !interceptOk && mode == "sidecar" {
 		log.Println("No intercept port given.")
 		os.Exit(1)
