@@ -1,11 +1,8 @@
 #!/bin/bash
 
-cd server
-go build
-
-cd ../sidecar
-docker build --no-cache -t proxy-sidecar:1 .
-docker tag proxy-sidecar:1 localhost/proxy-sidecar:1
-docker push localhost/proxy-sidecar:1
+cd proxy
+docker build --no-cache -t proxy:1 .
+docker tag proxy:1 localhost/proxy:1
+docker push localhost/proxy:1
 cd ..
 

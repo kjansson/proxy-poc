@@ -28,14 +28,16 @@ spec:
             cpu: 100m
             memory: 400M
       - name: proxy-sidecar
-        image: host.minikube.internal/proxy-sidecar:1
+        image: host.minikube.internal/proxy:1
         imagePullPolicy: Always
         securityContext:
           capabilities:
             add: ["NET_ADMIN"]
         env:
           - name: SERVER_ADDRESS
-            value: ":10161"
+            value: "192.168.0.112:11161"
+          - name: PROXY_MODE
+            value: sidecar
         resources:
           requests:
             cpu: 100m
