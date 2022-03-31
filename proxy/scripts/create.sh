@@ -5,7 +5,6 @@ if [[ -z "$PROXY_INTERCEPT_PORT_RANGE" ]]; then
     exit
 fi
 
-#iptables -t mangle -A OUTPUT -p udp --dport $PROXY_INTERCEPT_PORT_RANGE -j MARK --set-mark 1
 iptables -t mangle -A OUTPUT -p udp -m multiport --dports $PROXY_INTERCEPT_PORT_RANGE -j MARK --set-mark 1
 
 ip route flush table 100

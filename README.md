@@ -1,6 +1,6 @@
 # udp-proxy-ish
 An UDP proxy(-ish) for proxying UDP traffic out of K8s. It is a sidecar-server setup which is 100% transparent to client applications.
-A sidecar is deployed to the application which intercepts outgoing UDP traffic on selected ports, and forwards them to an external proxy that can be placed wherever you like.
+A sidecar is deployed to the application which intercepts outgoing UDP traffic on selected ports, and forwards it to an external proxy that can be placed wherever you like. The traffic is then forwarded to its destination and back.
 
 
 ## Configuration
