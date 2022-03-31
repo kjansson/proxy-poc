@@ -35,11 +35,11 @@ spec:
             add: ["NET_ADMIN"]
         env:
           - name: SERVER_ADDRESS
-            value: "192.168.0.112:11111"
+            value: "192.168.0.110:11111"
           - name: PROXY_MODE
             value: sidecar
           - name: PROXY_INTERCEPT_PORT_RANGE
-            value: 161
+            value: "161,162"
         resources:
           requests:
             cpu: 100m

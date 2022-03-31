@@ -19,7 +19,7 @@ import (
 const addrMaxBytes = 21
 
 var (
-	udpListener *net.UDPConn
+	udpListener []*net.UDPConn
 )
 
 func rFieldByNames(i interface{}, fields ...string) (field reflect.Value) {
@@ -72,6 +72,7 @@ func parsePortRange(raw string) ([]int, error) {
 func main() {
 	// listen to incoming udp packets
 	var err error
+	var ports []int
 
 	mode, ok := os.LookupEnv("PROXY_MODE")
 	if !ok || (mode != "sidecar" && mode != "server") {
@@ -85,10 +86,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	interceptPort, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT_RANGE")
-	if !interceptOk && mode == "sidecar" {
-		log.Println("No intercept port given.")
-		os.Exit(1)
+	if mode == "sidecar" {
+		interceptPortRange, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT_RANGE")
+		if !interceptOk && mode == "sidecar" {
+			log.Println("No intercept port given.")
+			os.Exit(1)
+		}
+
+		ports, err = parsePortRange(interceptPortRange)
+		if err != nil {
+			log.Println("Port range parse error: ", err)
+			os.Exit(1)
+		}
 	}
 
 	serverPort, sp_ok := os.LookupEnv("SERVER_PORT")
@@ -98,61 +107,65 @@ func main() {
 			serverPort = "11111"
 		}
 
-		log.Printf("Binding to %s:%s as server\n", serverAddress, serverPort)
+		log.Printf("Binding to %s:%s as server.\n", serverAddress, serverPort)
 		udpAddr, err := net.ResolveUDPAddr("udp", serverAddress+":"+serverPort)
 		if err != nil {
 			log.Println("Error resolving address", err)
 		}
 
-		udpListener, err = net.ListenUDP("udp", udpAddr)
+		l, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
-			log.Fatal(err)
-		}
-		defer udpListener.Close()
-
-	} else {
-		log.Printf("Binding to 0.0.0.0:%s as client\n", interceptPort)
-
-		port, err := strconv.Atoi(interceptPort)
-		if err != nil {
-			log.Println("Could not parse port")
+			log.Println(err)
 			os.Exit(1)
 		}
+		udpListener = append(udpListener, l)
 
-		udpAddr := &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: port}
+		defer l.Close()
 
-		udpListener, err = net.ListenUDP("udp", udpAddr)
-		if err != nil {
-			log.Fatal(err)
+	} else {
+
+		for _, p := range ports {
+
+			log.Printf("Binding to 0.0.0.0:%d as client\n", p)
+
+			udpAddr := &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: p}
+			l, err := net.ListenUDP("udp", udpAddr)
+			if err != nil {
+				log.Fatal(err)
+			}
+			udpListener = append(udpListener, l)
+
+			defer l.Close()
 		}
-		defer udpListener.Close()
 	}
+	for _, listener := range udpListener {
+		fd := int(rFieldByNames(listener, "fd", "pfd", "Sysfd").Int())
+		if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil { // Allow binding to non-local
+			syscall.Close(fd)
+			log.Println("Could not set socket option IP_TRANSPARENT")
+			syscall.Exit(1)
+		}
 
-	fd := int(rFieldByNames(udpListener, "fd", "pfd", "Sysfd").Int())
-	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil { // Allow binding to non-local
-		syscall.Close(fd)
-		log.Println("Could not set socket option IP_TRANSPARENT")
-		syscall.Exit(1)
+		if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil { // Enable getting original destination address
+			log.Println("Could not set socket option IP_RECVORIGDSTADDR")
+			syscall.Exit(1)
+		}
+		go serveUDP(listener, serverAddress, serverPort, mode)
 	}
-
-	if err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil { // Enable getting original destination address
-		log.Println("Could not set socket option IP_RECVORIGDSTADDR")
-		syscall.Exit(1)
-	}
-
-	go serveUDP(serverAddress, serverPort, mode)
 
 	interruptListener := make(chan os.Signal)
 	signal.Notify(interruptListener, os.Interrupt)
 	<-interruptListener
-	udpListener.Close()
+	for _, listener := range udpListener {
+		listener.Close()
+	}
 
 }
 
-func serveUDP(server_address string, server_port string, mode string) {
+func serveUDP(listener *net.UDPConn, server_address string, server_port string, mode string) {
 	for {
 		data := make([]byte, 1024)
-		n, srcAddr, dstAddr, err := ReadUDP(udpListener, data) // Read UDP packet
+		n, srcAddr, dstAddr, err := ReadUDP(listener, data) // Read UDP packet
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 				log.Printf("Temporary error while reading data: %s", netErr)
@@ -161,11 +174,11 @@ func serveUDP(server_address string, server_port string, mode string) {
 			log.Fatalf("Unrecoverable error while reading data: %s", err)
 			return
 		}
-		go serve(data[:n], srcAddr, dstAddr, server_address, server_port, mode) // Handle connection
+		go serve(listener, data[:n], srcAddr, dstAddr, server_address, server_port, mode) // Handle connection
 	}
 }
 
-func serve(data []byte, addr net.Addr, dstAddr net.Addr, server_address string, server_port string, mode string) {
+func serve(listener *net.UDPConn, data []byte, addr net.Addr, dstAddr net.Addr, server_address string, server_port string, mode string) {
 
 	var conn *net.UDPConn
 	var udpAddr *net.UDPAddr
@@ -183,7 +196,6 @@ func serve(data []byte, addr net.Addr, dstAddr net.Addr, server_address string, 
 
 		data = data[:len(data)-21]
 	} else {
-
 		addr := fmt.Sprintf("%-21v", dstAddr.String())
 		data = append(data[:], addr[:]...)
 
@@ -201,7 +213,6 @@ func serve(data []byte, addr net.Addr, dstAddr net.Addr, server_address string, 
 	defer conn.Close()
 
 	conn.Write(data) // And send the payload, minus the ip+port
-
 	// Wait for response
 	responseData := make([]byte, 1024)
 	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
@@ -222,9 +233,9 @@ func serve(data []byte, addr net.Addr, dstAddr net.Addr, server_address string, 
 	}
 
 	// Write the response back
-	_, err = udpListener.WriteToUDP(responseData, ludpAddr)
+	_, err = listener.WriteToUDP(responseData, ludpAddr)
 	if err != nil {
-		log.Printf("Encountered error while writing to local [%s]: %s", udpListener.LocalAddr(), err)
+		log.Printf("Encountered error while writing to local [%s]: %s", listener.LocalAddr(), err)
 		return
 	}
 }
