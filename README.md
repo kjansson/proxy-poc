@@ -24,7 +24,7 @@ docker run -it --network host -e SERVER_ADDRESS=xxx.xxx.xxx.xxx -e PROXY_MODE=se
 ## Setting up the sidecar in K8s
 The sidecar is deployed in the pod where the UDP traffic originates from. It needs the CAP_NET_ADMIN capability to set the correct socket options, and setting up iptables and routing.
 
-Example;
+Example for proxying SNMP traffic;
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -55,18 +55,18 @@ spec:
             cpu: 100m
             memory: 400M
       - name: proxy-sidecar
-        image: host.minikube.internal/proxy:1
+        image: proxy-image:tag
         imagePullPolicy: Always
         securityContext:
           capabilities:
             add: ["NET_ADMIN"]
         env:
           - name: SERVER_ADDRESS
-            value: "192.168.0.110:11111"
+            value: "10.10.10.15:11111"
           - name: PROXY_MODE
             value: sidecar
           - name: PROXY_INTERCEPT_PORT_RANGE
-            value: "161,162,3000:3005"
+            value: "161"
         resources:
           requests:
             cpu: 100m
