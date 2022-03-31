@@ -9,10 +9,12 @@ The proxy and sidecar are configured via environment variables.
 
 ### Environment variables
 
+```
 PROXY_MODE - Required. Role of the container. Can be "proxy" or "sidecar"
 SERVER_ADDRESS - Required for sidecar. For sidecar, this is the address of the proxy side, given in the "ip:port" format. For proxy, this is the ip address to bind to.
 SERVER_PORT - Used only in proxy role. Port that the proxy will bind to. Defaults to 11111.
 PROXY_INTERCEPT_PORT_RANGE - Required for sidecar. Ports and port ranges that will be intercepted by the sidecar and sent to the proxy. The format is the same as used in iptables --dports option. Examples: "161", "161,162", "161,2002:2005"
+```
 
 ## Starting the Proxy
 ```
