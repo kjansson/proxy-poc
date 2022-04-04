@@ -11,14 +11,15 @@ The proxy and sidecar are configured via environment variables.
 
 ```
 PROXY_MODE - Required. Role of the container. Can be "proxy" or "sidecar"
-SERVER_ADDRESS - Required for sidecar. For sidecar, this is the address of the proxy side, given in the "ip:port" format. For proxy, this is the ip address to bind to.
-SERVER_PORT - Used only in proxy role. Port that the proxy will bind to. Defaults to 11111.
+PROXY_SERVER_ADDRESS - Required for sidecar. This is the address of the proxy server side, given in the "ip:port" format.
+PROXY_SERVER_BIND_ADDRESS - Required for server. This is the address to bind to for the server side of the proxy.
+PROXY_SERVER_PORT - Used only in proxy role. Port that the proxy will bind to. Defaults to 11111.
 PROXY_INTERCEPT_PORT_RANGE - Required for sidecar. Ports and port ranges that will be intercepted by the sidecar and sent to the proxy. The format is the same as used in iptables --dports option. Examples: "161", "161,162", "161,2002:2005"
 ```
 
 ## Starting the Proxy
 ```
-docker run -it --network host -e SERVER_ADDRESS=xxx.xxx.xxx.xxx -e PROXY_MODE=server proxy-image
+docker run -it --network host -e PROXY_SERVER_BIND_ADDRESS=xxx.xxx.xxx.xxx -e PROXY_MODE=server proxy-image
 ```
 
 ## Setting up the sidecar in K8s
@@ -61,7 +62,7 @@ spec:
           capabilities:
             add: ["NET_ADMIN"]
         env:
-          - name: SERVER_ADDRESS
+          - name: PROXY_SERVER_ADDRESS
             value: "10.10.10.15:11111"
           - name: PROXY_MODE
             value: sidecar

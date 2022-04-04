@@ -70,23 +70,36 @@ func parsePortRange(raw string) ([]int, error) {
 }
 
 func main() {
-	// listen to incoming udp packets
 	var err error
 	var ports []int
+	var mode, serverAddress, serverBindAddress, serverPort string
+	var ok bool
 
-	mode, ok := os.LookupEnv("PROXY_MODE")
+	// Required
+	mode, ok = os.LookupEnv("PROXY_MODE")
 	if !ok || (mode != "sidecar" && mode != "server") {
 		log.Println("No valid proxy mode given in env variable PROXY_MODE. Options are: 'sidecar' or 'server'")
 		os.Exit(1)
 	}
 
-	serverAddress, saOk := os.LookupEnv("SERVER_ADDRESS")
-	if !saOk && mode == "sidecar" {
-		log.Println("No server address given.")
-		os.Exit(1)
+	if mode == "server" {
+		// Required for server
+
+		serverBindAddress, ok = os.LookupEnv("PROXY_SERVER_BIND_ADDRESS")
+		if !ok {
+			log.Println("No server bind address given.")
+			os.Exit(1)
+		}
 	}
 
 	if mode == "sidecar" {
+		// Required for sidecar
+		serverAddress, ok = os.LookupEnv("PROXY_SERVER_ADDRESS")
+		if !ok {
+			log.Println("No server bind address given.")
+			os.Exit(1)
+		}
+		// Required for sidecar
 		interceptPortRange, interceptOk := os.LookupEnv("PROXY_INTERCEPT_PORT_RANGE")
 		if !interceptOk && mode == "sidecar" {
 			log.Println("No intercept port given.")
@@ -100,15 +113,15 @@ func main() {
 		}
 	}
 
-	serverPort, sp_ok := os.LookupEnv("SERVER_PORT")
 	if mode == "server" {
-		if !sp_ok {
+		serverPort, ok := os.LookupEnv("PROXY_SERVER_PORT")
+		if !ok {
 			log.Println("Defaulting to port 11111.")
 			serverPort = "11111"
 		}
 
-		log.Printf("Binding to %s:%s as server.\n", serverAddress, serverPort)
-		udpAddr, err := net.ResolveUDPAddr("udp", serverAddress+":"+serverPort)
+		log.Printf("Binding to %s:%s as server.\n", serverBindAddress, serverPort)
+		udpAddr, err := net.ResolveUDPAddr("udp", serverBindAddress+":"+serverPort)
 		if err != nil {
 			log.Println("Error resolving address", err)
 		}
